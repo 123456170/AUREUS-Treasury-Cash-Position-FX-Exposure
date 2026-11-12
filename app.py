@@ -6,6 +6,8 @@ Auto-seeds a clearly-labeled SYNTHETIC dataset, starts a live simulation,
 and supports the full workflow: import -> validate -> forecast -> scenario
 -> review -> approve -> export. Persistence: SQLite (stdlib). Demo video:
 animated GIF rendered locally with Pillow from the running simulation.
+Theming: 4 switchable themes (sidebar), persisted, applied to CSS, charts
+and the demo reel. Default: Porcelain · Private Bank (light).
 
 Run (Windows PowerShell):
     python -m venv .venv
@@ -36,7 +38,7 @@ from PIL import Image, ImageDraw, ImageFont
 from streamlit.components.v1 import html as components_html
 
 # ----------------------------------------------------------------------------
-# Constants & palette
+# Constants
 # ----------------------------------------------------------------------------
 APP_NAME = "AUREUS"
 TAGLINE = "Treasury · Cash Position · FX Exposure"
@@ -53,16 +55,121 @@ BASE_CCY = "USD"
 CURRENCIES = ["USD", "EUR", "GBP", "JPY", "SGD", "CHF"]
 FOREIGN = [c for c in CURRENCIES if c != BASE_CCY]
 CCY_META = {
-    "USD": {"color": "#F5B841", "sym": "$",  "rate_dp": 4, "name": "US Dollar"},
-    "EUR": {"color": "#4C9AFF", "sym": "€",  "rate_dp": 4, "name": "Euro"},
-    "GBP": {"color": "#E86BC7", "sym": "£",  "rate_dp": 4, "name": "Pound Sterling"},
-    "JPY": {"color": "#FF6B5E", "sym": "¥",  "rate_dp": 5, "name": "Japanese Yen"},
-    "SGD": {"color": "#2FBF71", "sym": "S$", "rate_dp": 4, "name": "Singapore Dollar"},
-    "CHF": {"color": "#35C4C8", "sym": "Fr", "rate_dp": 4, "name": "Swiss Franc"},
+    "USD": {"color": "#B8860B", "sym": "$",  "rate_dp": 4, "name": "US Dollar"},
+    "EUR": {"color": "#2563EB", "sym": "€",  "rate_dp": 4, "name": "Euro"},
+    "GBP": {"color": "#C026D3", "sym": "£",  "rate_dp": 4, "name": "Pound Sterling"},
+    "JPY": {"color": "#DC2626", "sym": "¥",  "rate_dp": 5, "name": "Japanese Yen"},
+    "SGD": {"color": "#059669", "sym": "S$", "rate_dp": 4, "name": "Singapore Dollar"},
+    "CHF": {"color": "#0891B2", "sym": "Fr", "rate_dp": 4, "name": "Swiss Franc"},
 }
 BASE_RATES = {"EUR": 1.0850, "GBP": 1.2720, "JPY": 0.00665, "SGD": 0.7420, "CHF": 1.1280}
-INK, SURF, EDGE, TXT, MUTE = "#0B1220", "#121C30", "#2A3550", "#E8ECF5", "#93A0B8"
-GOLD, GREEN, RED, BLUE, AMBER, GRAY = "#F5B841", "#2FBF71", "#E5484D", "#4C9AFF", "#E8A33D", "#6B7690"
+
+# ----------------------------------------------------------------------------
+# Theme engine — every visual surface derives from the active theme.
+# Legacy globals (GOLD/GREEN/...) are re-pointed by apply_theme() each run,
+# so all existing call sites (chips, KPIs, alerts, charts, GIF) follow along.
+# ----------------------------------------------------------------------------
+THEMES: dict[str, dict] = {
+    "Porcelain · Private Bank": {
+        "app_bg": ("radial-gradient(1100px 560px at 88% -10%,rgba(15,118,110,.07),transparent 60%),"
+                   "radial-gradient(900px 520px at -8% 0%,rgba(184,134,11,.08),transparent 55%),"
+                   "linear-gradient(180deg,#FAF7F0 0%,#F3EFE6 100%)"),
+        "sidebar_bg": "linear-gradient(180deg,#F2EDE1,#ECE6D6)",
+        "ink": "#F7F4EC", "surf": "#FFFFFF", "surf2": "#F6F1E4",
+        "edge": "#D8D0BC", "edge2": "#E6DFCE",
+        "txt": "#2B2A26", "mute": "#6E6A5E", "faint": "#8B8676",
+        "accent": "#0F766E", "accent_hi": "#14B8A6", "accent_lo": "#0B5D57",
+        "primary_txt": "#FFFFFF",
+        "pos": "#0E7A5F", "neg": "#C0392B", "warn": "#B45309", "info": "#2563EB", "gray": "#9AA1AE",
+        "plot_bg": "rgba(255,255,255,0.65)", "chart_font": "#55524A",
+        "band": "#EFE8D8", "badge_bg": "#F3EAD3", "area_fill": "#DCEDE7", "grid2": "#E0D8C4",
+        "input_bg": "#FFFFFF", "btn_bg": "#FFFFFF",
+        "expander_bg": "rgba(255,255,255,0.6)", "alert_bg": "rgba(255,255,255,0.8)",
+        "scroll1": "#C9BFA6", "scroll2": "#A89C7E",
+        "ccy": {"USD": "#B8860B", "EUR": "#2563EB", "GBP": "#C026D3",
+                "JPY": "#DC2626", "SGD": "#059669", "CHF": "#0891B2"},
+    },
+    "Aureus · Midnight Gold": {
+        "app_bg": ("radial-gradient(1100px 560px at 88% -10%,rgba(76,154,255,.09),transparent 60%),"
+                   "radial-gradient(900px 520px at -8% 0%,rgba(245,184,65,.08),transparent 55%),"
+                   "linear-gradient(180deg,#0B1220 0%,#0A101C 100%)"),
+        "sidebar_bg": "linear-gradient(180deg,#0E1626,#0B1220)",
+        "ink": "#0B1220", "surf": "#131C2E", "surf2": "#0E1524",
+        "edge": "#2A3550", "edge2": "#1E2A44",
+        "txt": "#E8ECF5", "mute": "#93A0B8", "faint": "#7C89A3",
+        "accent": "#F5B841", "accent_hi": "#F8D488", "accent_lo": "#C9962E",
+        "primary_txt": "#1A1405",
+        "pos": "#2FBF71", "neg": "#E5484D", "warn": "#E8A33D", "info": "#4C9AFF", "gray": "#6B7690",
+        "plot_bg": "rgba(13,20,35,0.55)", "chart_font": "#C7CFDF",
+        "band": "#101A2E", "badge_bg": "#2E200E", "area_fill": "#33270F", "grid2": "#1B2740",
+        "input_bg": "#0F1728", "btn_bg": "#121C30",
+        "expander_bg": "rgba(15,23,40,0.5)", "alert_bg": "rgba(15,23,40,0.75)",
+        "scroll1": "#8A6A2F", "scroll2": "#5E4718",
+        "ccy": {"USD": "#F5B841", "EUR": "#4C9AFF", "GBP": "#E86BC7",
+                "JPY": "#FF6B5E", "SGD": "#2FBF71", "CHF": "#35C4C8"},
+    },
+    "Emerald · Terminal": {
+        "app_bg": ("radial-gradient(1100px 560px at 88% -10%,rgba(52,211,153,.08),transparent 60%),"
+                   "radial-gradient(900px 520px at -8% 0%,rgba(56,189,248,.05),transparent 55%),"
+                   "linear-gradient(180deg,#06120C 0%,#040D08 100%)"),
+        "sidebar_bg": "linear-gradient(180deg,#0A1B12,#06120C)",
+        "ink": "#06120C", "surf": "#0C1F16", "surf2": "#081711",
+        "edge": "#1E3A2C", "edge2": "#163023",
+        "txt": "#E5F5EC", "mute": "#8FB8A3", "faint": "#6E9A85",
+        "accent": "#34D399", "accent_hi": "#6EE7B7", "accent_lo": "#059669",
+        "primary_txt": "#052E1F",
+        "pos": "#34D399", "neg": "#F87171", "warn": "#FBBF24", "info": "#38BDF8", "gray": "#64748B",
+        "plot_bg": "rgba(8,23,17,0.6)", "chart_font": "#BFE3D2",
+        "band": "#0A1B12", "badge_bg": "#123527", "area_fill": "#0E2E22", "grid2": "#163023",
+        "input_bg": "#0A1B12", "btn_bg": "#0C1F16",
+        "expander_bg": "rgba(12,31,22,0.5)", "alert_bg": "rgba(12,31,22,0.75)",
+        "scroll1": "#1F5C40", "scroll2": "#123B29",
+        "ccy": {"USD": "#FBBF24", "EUR": "#38BDF8", "GBP": "#F472B6",
+                "JPY": "#FB7185", "SGD": "#4ADE80", "CHF": "#2DD4BF"},
+    },
+    "Royal · Violet Night": {
+        "app_bg": ("radial-gradient(1100px 560px at 88% -10%,rgba(167,139,250,.10),transparent 60%),"
+                   "radial-gradient(900px 520px at -8% 0%,rgba(96,165,250,.06),transparent 55%),"
+                   "linear-gradient(180deg,#100E1D 0%,#0C0A17 100%)"),
+        "sidebar_bg": "linear-gradient(180deg,#161329,#100E1D)",
+        "ink": "#100E1D", "surf": "#1A1730", "surf2": "#131024",
+        "edge": "#322C55", "edge2": "#262045",
+        "txt": "#ECE9F8", "mute": "#A29BC4", "faint": "#837BA8",
+        "accent": "#A78BFA", "accent_hi": "#C4B5FD", "accent_lo": "#7C3AED",
+        "primary_txt": "#17102E",
+        "pos": "#4ADE80", "neg": "#FB7185", "warn": "#FCD34D", "info": "#60A5FA", "gray": "#6B7280",
+        "plot_bg": "rgba(19,16,36,0.6)", "chart_font": "#CFC8E8",
+        "band": "#161329", "badge_bg": "#2A2350", "area_fill": "#221C42", "grid2": "#262045",
+        "input_bg": "#161329", "btn_bg": "#1A1730",
+        "expander_bg": "rgba(26,23,48,0.5)", "alert_bg": "rgba(26,23,48,0.75)",
+        "scroll1": "#5B4A9E", "scroll2": "#3A2F6B",
+        "ccy": {"USD": "#FBBF24", "EUR": "#60A5FA", "GBP": "#F0ABFC",
+                "JPY": "#FB7185", "SGD": "#4ADE80", "CHF": "#22D3EE"},
+    },
+}
+DEFAULT_THEME = "Porcelain · Private Bank"
+THEME: dict = THEMES[DEFAULT_THEME]
+
+# Active-palette globals (re-pointed by apply_theme before any rendering).
+INK, SURF, EDGE, TXT, MUTE = "#F7F4EC", "#FFFFFF", "#D8D0BC", "#2B2A26", "#6E6A5E"
+GOLD, GREEN, RED, BLUE, AMBER, GRAY = "#0F766E", "#0E7A5F", "#C0392B", "#2563EB", "#B45309", "#9AA1AE"
+
+
+def apply_theme(name: str) -> None:
+    """Activate a theme: re-point palette globals and currency colors."""
+    global THEME, INK, SURF, EDGE, TXT, MUTE, GOLD, GREEN, RED, BLUE, AMBER, GRAY
+    t = THEMES.get(name, THEMES[DEFAULT_THEME])
+    THEME = t
+    INK, SURF, EDGE, TXT, MUTE = t["ink"], t["surf"], t["edge"], t["txt"], t["mute"]
+    GOLD, GREEN, RED, BLUE, AMBER, GRAY = t["accent"], t["pos"], t["neg"], t["info"], t["warn"], t["gray"]
+    for c in CURRENCIES:
+        CCY_META[c]["color"] = t["ccy"][c]
+
+
+def _set_theme() -> None:
+    set_meta("theme", st.session_state["theme_sel"])
+    st.session_state["demo_gif"] = None  # reel re-renders in the new theme
+
 
 CATEGORIES = ["Settlements", "Receivables", "Payroll", "Payables", "Tax", "Debt service",
               "Scheme fees", "Infrastructure", "Intercompany", "Facilities", "Investments", "Bank fees"]
@@ -150,7 +257,8 @@ def chip(text: str, color: str) -> str:
             f'padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;">{text}</span>')
 
 
-def kpi_html(label: str, value: str, sub: str = "", tone: str = GOLD) -> str:
+def kpi_html(label: str, value: str, sub: str = "", tone: str | None = None) -> str:
+    tone = tone or GOLD
     return (f'<div class="t-card"><div class="kpi-label">{label}</div>'
             f'<div class="kpi-value" style="color:{tone};">{value}</div>'
             f'<div class="kpi-sub">{sub}</div></div>')
@@ -163,11 +271,7 @@ def alert_html(kind: str, text: str) -> str:
 
 
 def _select(label: str, options: list, key: str, fmt=None):
-    """Selectbox that survives option-list changes (deletes, status moves).
-
-    A stale session-state value not present in the current options would
-    otherwise raise on rerun; we clear it before the widget is created.
-    """
+    """Selectbox that survives option-list changes (deletes, status moves)."""
     opts = list(options)
     if key in st.session_state and st.session_state[key] not in opts:
         del st.session_state[key]
@@ -711,7 +815,6 @@ def seed_all() -> None:
                   (iso, "system", "Administrator", "dataset_seeded", "database",
                    json.dumps({"label": "SYNTHETIC demo data", "accounts": len(accounts), "obligations": len(obs)})))
 
-    # Seed scenarios through the real engine so results are genuine computations.
     acc, ob = qdf("SELECT * FROM accounts"), qdf("SELECT * FROM obligations")
     rates, _ = get_rates()
     chk = snapshot_checksum()
@@ -803,15 +906,15 @@ def inject_shock() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Charts (Plotly, subject palette, direct labels)
+# Charts (Plotly — all colors resolved from the active theme at render time)
 # ----------------------------------------------------------------------------
 def _layout(fig: go.Figure, height: int = 360, money_y: bool = True) -> go.Figure:
-    fig.update_layout(height=height, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(13,20,35,0.55)",
-                      font=dict(color="#C7CFDF", family="Segoe UI, sans-serif", size=12),
+    fig.update_layout(height=height, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor=THEME["plot_bg"],
+                      font=dict(color=THEME["chart_font"], family="Segoe UI, sans-serif", size=12),
                       margin=dict(l=10, r=10, t=34, b=10), hovermode="x unified",
                       legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_xaxes(gridcolor="#1E2A44", zerolinecolor="#1E2A44")
-    fig.update_yaxes(gridcolor="#1E2A44", zerolinecolor="#2A3550",
+    fig.update_xaxes(gridcolor=THEME["edge2"], zerolinecolor=THEME["edge2"])
+    fig.update_yaxes(gridcolor=THEME["edge2"], zerolinecolor=THEME["edge"],
                      tickprefix="$" if money_y else "", tickformat=".2s" if money_y else None)
     return fig
 
@@ -857,7 +960,7 @@ def fig_composition(accounts: pd.DataFrame, rates: dict) -> go.Figure:
     fig = go.Figure(go.Pie(labels=list(vals), values=list(vals.values()), hole=0.62,
                            marker=dict(colors=[CCY_META[c]["color"] for c in vals],
                                        line=dict(color=INK, width=2)),
-                           textinfo="label+percent", textfont=dict(color="#E8ECF5", size=12)))
+                           textinfo="label+percent", textfont=dict(color=THEME["txt"], size=12)))
     fig.add_annotation(text=money(sum(vals.values()), comp=True), showarrow=False,
                        font=dict(color=GOLD, size=20, family="Consolas, monospace"))
     fig.update_layout(height=300, margin=dict(l=6, r=6, t=10, b=6), showlegend=False,
@@ -870,7 +973,7 @@ def fig_exposure(exposure: pd.DataFrame) -> go.Figure:
     fig = go.Figure(go.Bar(x=e["currency"], y=e["usd_net"],
                            marker=dict(color=[CCY_META[c]["color"] for c in e["currency"]]),
                            text=[f"+{money(s, comp=True)} / 1%" for s in e["sens_1pct_usd"]],
-                           textposition="outside", textfont=dict(size=11, color="#C7CFDF")))
+                           textposition="outside", textfont=dict(size=11, color=THEME["chart_font"])))
     fig.update_yaxes(title="Net exposure (USD equiv)")
     return _layout(fig, 320)
 
@@ -1019,7 +1122,7 @@ def run_self_tests() -> list[dict]:
 
 
 # ----------------------------------------------------------------------------
-# Demo reel (live video file generated locally with Pillow)
+# Demo reel (live video file generated locally with Pillow, theme-aware)
 # ----------------------------------------------------------------------------
 def _font(sz: int, bold: bool = False):
     for name in (["arialbd.ttf", "DejaVuSans-Bold.ttf"] if bold else ["arial.ttf", "DejaVuSans.ttf"]):
@@ -1061,11 +1164,11 @@ def render_demo_gif(n_frames: int, duration: int) -> bytes:
     for i in range(n_frames):
         img = Image.new("RGB", (W, H), _rgb(INK))
         d = ImageDraw.Draw(img)
-        d.rectangle([0, 0, W, 84], fill=_rgb("#101A2E"))
+        d.rectangle([0, 0, W, 84], fill=_rgb(THEME["band"]))
         d.line([0, 84, W, 84], fill=_rgb(GOLD), width=2)
         d.text((24, 16), "AUREUS TREASURY — LIVE DEMO", font=f_title, fill=_rgb(GOLD))
         d.text((24, 50), "Consolidated cash · obligations · FX exposure — synthetic data", font=f_small, fill=_rgb(MUTE))
-        d.rounded_rectangle([W - 208, 20, W - 24, 50], 8, fill=_rgb("#2E200E"), outline=_rgb(GOLD))
+        d.rounded_rectangle([W - 208, 20, W - 24, 50], 8, fill=_rgb(THEME["badge_bg"]), outline=_rgb(GOLD))
         d.text((W - 194, 28), "SYNTHETIC DEMO", font=f_lab, fill=_rgb(GOLD))
         cash *= 1 + float(rng.normal(0, 0.0006))
         phase2 = i >= int(n_frames * 0.55)
@@ -1080,7 +1183,7 @@ def render_demo_gif(n_frames: int, duration: int) -> bytes:
         d.rectangle([cx0, cy0, cx1, cy1], outline=_rgb(EDGE))
         for g in range(1, 4):
             y = cy0 + g * (cy1 - cy0) // 4
-            d.line([cx0, y, cx1, y], fill=_rgb("#1B2740"))
+            d.line([cx0, y, cx1, y], fill=_rgb(THEME["grid2"]))
             v = hi - g * (hi - lo) / 4
             d.text((cx0 + 4, y - 14), money(v, comp=True), font=f_lab, fill=_rgb(MUTE))
 
@@ -1089,7 +1192,7 @@ def render_demo_gif(n_frames: int, duration: int) -> bytes:
                      cy1 - (curve[j] - lo) / (hi - lo) * (cy1 - cy0)) for j in range(k)]
         k = max(2, int((i + 1) / n_frames * len(bc)))
         pb = pts(bc, k)
-        d.polygon(pb + [(pb[-1][0], cy1), (pb[0][0], cy1)], fill=_rgb("#33270F"))
+        d.polygon(pb + [(pb[-1][0], cy1), (pb[0][0], cy1)], fill=_rgb(THEME["area_fill"]))
         d.line(pb, fill=_rgb(GOLD), width=3, joint="curve")
         fy = cy1 - (floor - lo) / (hi - lo) * (cy1 - cy0)
         for x in range(cx0, cx1, 14):
@@ -1122,7 +1225,7 @@ def render_demo_gif(n_frames: int, duration: int) -> bytes:
             d.text((px + 92, y), str(e["memo"])[:26], font=f_small, fill=_rgb(MUTE))
         d.text((24, 482), f"SIM TICK {i + 1}/{n_frames}", font=f_lab, fill=_rgb(MUTE))
         d.text((640, 482), f"engine v{ENGINE_VERSION} · rules {RULES_VERSION}", font=f_lab, fill=_rgb(MUTE))
-        d.rounded_rectangle([24, 504, 936, 514], 5, fill=_rgb("#1B2740"))
+        d.rounded_rectangle([24, 504, 936, 514], 5, fill=_rgb(THEME["grid2"]))
         d.rounded_rectangle([24, 504, 24 + int(912 * (i + 1) / n_frames), 514], 5, fill=_rgb(GOLD))
         frames.append(img.convert("P", palette=Image.Palette.ADAPTIVE))
     buf = io.BytesIO()
@@ -1132,7 +1235,8 @@ def render_demo_gif(n_frames: int, duration: int) -> bytes:
 
 
 # ----------------------------------------------------------------------------
-# Report builder (approval-ready)
+# Report builder (approval-ready; fixed paper style for print, independent
+# of the app theme by design)
 # ----------------------------------------------------------------------------
 def _tbl(headers: list[str], rows: list[list]) -> str:
     th = "".join(f"<th style='background:#F6F1E4;border:1px solid #E2DCC8;padding:6px 10px;text-align:left;font-size:12px;'>{h}</th>" for h in headers)
@@ -1221,68 +1325,86 @@ def build_report(sc: dict) -> tuple[str, str]:
 
 
 # ----------------------------------------------------------------------------
-# CSS — subject-committed palette, custom scrollbars, ledger typography
+# CSS template — %%tokens%% resolved from the active theme by build_css()
 # ----------------------------------------------------------------------------
-CSS = """
+CSS_TEMPLATE = """
 <style>
-*{scrollbar-width:thin;scrollbar-color:#8A6A2F #0B1220;}
+*{scrollbar-width:thin;scrollbar-color:%%scroll1%% %%scroll_track%%;}
 *::-webkit-scrollbar{width:10px;height:10px;}
-*::-webkit-scrollbar-track{background:#0B1220;}
-*::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#8A6A2F,#5E4718);border-radius:8px;border:2px solid #0B1220;}
-*::-webkit-scrollbar-thumb:hover{background:#C9962E;}
-[data-testid="stAppViewContainer"]{background:
- radial-gradient(1100px 560px at 88% -10%,rgba(76,154,255,.09),transparent 60%),
- radial-gradient(900px 520px at -8% 0%,rgba(245,184,65,.08),transparent 55%),
- linear-gradient(180deg,#0B1220 0%,#0A101C 100%);}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#0E1626,#0B1220);border-right:1px solid #1E2A44;}
+*::-webkit-scrollbar-track{background:%%scroll_track%%;}
+*::-webkit-scrollbar-thumb{background:linear-gradient(180deg,%%scroll1%%,%%scroll2%%);border-radius:8px;border:2px solid %%scroll_track%%;}
+*::-webkit-scrollbar-thumb:hover{background:%%scroll_hover%%;}
+[data-testid="stAppViewContainer"]{background:%%app_bg%%;}
+[data-testid="stSidebar"]{background:%%sidebar_bg%%;border-right:1px solid %%edge2%%;}
 [data-testid="stHeader"]{background:transparent;}
-#MainMenu,footer,[data-testid="stToolbar"]{display:none;}
+#MainMenu,footer{display:none;}
 .block-container{padding-top:1.1rem;max-width:1500px;}
-h1,h2,h3{font-family:Georgia,'Times New Roman',serif;color:#E8ECF5;letter-spacing:.3px;}
+h1,h2,h3{font-family:Georgia,'Times New Roman',serif;color:%%txt%%;letter-spacing:.3px;}
 .brand{font-family:Georgia,serif;font-size:32px;font-weight:700;line-height:1;
- background:linear-gradient(90deg,#F5B841,#F8D488,#C9962E);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.brand-sub{color:#93A0B8;font-size:12px;letter-spacing:2.5px;text-transform:uppercase;margin-top:2px;}
-.t-card{background:linear-gradient(160deg,#131C2E,#0E1524);border:1px solid #2A3550;border-radius:14px;
- padding:14px 16px;box-shadow:0 6px 22px rgba(0,0,0,.35);margin-bottom:6px;}
-.kpi-label{color:#93A0B8;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;}
+ background:linear-gradient(90deg,%%brand1%%,%%brand2%%,%%brand3%%);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.brand-sub{color:%%mute%%;font-size:12px;letter-spacing:2.5px;text-transform:uppercase;margin-top:2px;}
+.t-card{background:linear-gradient(160deg,%%surf%%,%%surf2%%);border:1px solid %%edge%%;border-radius:14px;
+ padding:14px 16px;box-shadow:0 6px 22px rgba(0,0,0,.12);margin-bottom:6px;}
+.kpi-label{color:%%mute%%;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;}
 .kpi-value{font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:27px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums;}
-.kpi-sub{color:#7C89A3;font-size:11.5px;}
-.t-alert{background:rgba(15,23,40,.75);border:1px solid #223050;border-left:4px solid #F5B841;
- border-radius:10px;padding:9px 13px;font-size:12.5px;color:#DDE4F0;margin-bottom:6px;}
-.clockchip{display:inline-flex;align-items:center;gap:9px;background:#101A2E;border:1px solid #223050;
- border-radius:10px;padding:7px 14px;font-family:Consolas,monospace;font-size:12.5px;color:#DDE4F0;}
+.kpi-sub{color:%%faint%%;font-size:11.5px;}
+.t-alert{background:%%alert_bg%%;border:1px solid %%edge2%%;border-left:4px solid %%accent%%;
+ border-radius:10px;padding:9px 13px;font-size:12.5px;color:%%txt%%;margin-bottom:6px;}
+.clockchip{display:inline-flex;align-items:center;gap:9px;background:%%btn_bg%%;border:1px solid %%edge2%%;
+ border-radius:10px;padding:7px 14px;font-family:Consolas,monospace;font-size:12.5px;color:%%txt%%;}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
-.dot.live{background:#2FBF71;box-shadow:0 0 8px #2FBF71;animation:pulse 1.6s infinite;}
-.dot.paused{background:#E8A33D;}
+.dot.live{background:%%pos%%;box-shadow:0 0 8px %%pos%%;animation:pulse 1.6s infinite;}
+.dot.paused{background:%%warn%%;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.fx-chip{display:inline-flex;gap:8px;align-items:center;background:#101A2E;border:1px solid #223050;
- border-radius:10px;padding:6px 12px;font-family:Consolas,monospace;font-size:12.5px;color:#E8ECF5;margin:2px;}
+.fx-chip{display:inline-flex;gap:8px;align-items:center;background:%%btn_bg%%;border:1px solid %%edge2%%;
+ border-radius:10px;padding:6px 12px;font-family:Consolas,monospace;font-size:12.5px;color:%%txt%%;margin:2px;}
 .feed{max-height:330px;overflow-y:auto;padding-right:6px;}
-.feed-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed #1E2A44;
- padding:7px 2px;font-size:12.5px;color:#C7CFDF;}
-.stButton>button,.stDownloadButton>button{background:#121C30;border:1px solid #2A3550;color:#DDE4F0;
+.feed-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed %%edge2%%;
+ padding:7px 2px;font-size:12.5px;color:%%txt%%;}
+.stButton>button,.stDownloadButton>button{background:%%btn_bg%%;border:1px solid %%edge%%;color:%%txt%%;
  border-radius:10px;transition:all .18s ease;}
-.stButton>button:hover,.stDownloadButton>button:hover{border-color:#F5B841;color:#F5B841;
- box-shadow:0 0 0 1px rgba(245,184,65,.25),0 4px 18px rgba(245,184,65,.10);transform:translateY(-1px);}
-button[kind="primary"],[data-testid="stBaseButton-primary"]{background:linear-gradient(135deg,#F5B841,#D99A26)!important;
- color:#1A1405!important;border:none!important;font-weight:700!important;}
-button[kind="primary"]:hover,[data-testid="stBaseButton-primary"]:hover{filter:brightness(1.08);color:#1A1405!important;}
-[data-baseweb="select"]>div,input,textarea{background:#0F1728!important;border-color:#2A3550!important;color:#E8ECF5!important;}
-[data-testid="stExpander"]{border:1px solid #1E2A44;border-radius:12px;background:rgba(15,23,40,.5);}
-[data-testid="stDataFrame"]{border:1px solid #1E2A44;border-radius:12px;}
-button[data-baseweb="tab"]{color:#93A0B8;}
-button[data-baseweb="tab"][aria-selected="true"]{color:#F5B841;}
-[data-baseweb="tab-highlight"]{background-color:#F5B841;}
-[data-testid="stSlider"] [role="slider"]{background:#F5B841;}
-[data-testid="stProgress"]>div>div{background:linear-gradient(90deg,#C9962E,#F5B841);}
+.stButton>button:hover,.stDownloadButton>button:hover{border-color:%%accent%%;color:%%accent%%;
+ box-shadow:0 0 0 1px %%glow%%,0 4px 18px %%glowsoft%%;transform:translateY(-1px);}
+button[kind="primary"],[data-testid="stBaseButton-primary"]{background:linear-gradient(135deg,%%accent_hi%%,%%accent%%)!important;
+ color:%%primary_txt%%!important;border:none!important;font-weight:700!important;}
+button[kind="primary"]:hover,[data-testid="stBaseButton-primary"]:hover{filter:brightness(1.06);color:%%primary_txt%%!important;}
+[data-baseweb="select"]>div,input,textarea{background:%%input_bg%%!important;border-color:%%edge%%!important;color:%%txt%%!important;}
+[data-testid="stExpander"]{border:1px solid %%edge2%%;border-radius:12px;background:%%expander_bg%%;}
+[data-testid="stDataFrame"]{border:1px solid %%edge2%%;border-radius:12px;}
+button[data-baseweb="tab"]{color:%%mute%%;}
+button[data-baseweb="tab"][aria-selected="true"]{color:%%accent%%;}
+[data-baseweb="tab-highlight"]{background-color:%%accent%%;}
+[data-testid="stSlider"] [role="slider"]{background:%%accent%%;}
+[data-testid="stProgress"]>div>div{background:linear-gradient(90deg,%%accent_lo%%,%%accent%%);}
 .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;}
-.flow .node{background:#121C30;border:1px solid #2A3550;border-left:3px solid #F5B841;border-radius:10px;
- padding:8px 12px;font-size:12px;color:#DDE4F0;}
-.flow .node.exc{border-left-color:#E5484D;}
-.flow .arrow{color:#F5B841;font-weight:700;}
-.small-note{color:#7C89A3;font-size:11.5px;}
+.flow .node{background:%%surf%%;border:1px solid %%edge%%;border-left:3px solid %%accent%%;border-radius:10px;
+ padding:8px 12px;font-size:12px;color:%%txt%%;}
+.flow .node.exc{border-left-color:%%neg%%;}
+.flow .arrow{color:%%accent%%;font-weight:700;}
+.small-note{color:%%faint%%;font-size:11.5px;}
 </style>
 """
+
+
+def build_css() -> str:
+    t = THEME
+    tokens = {
+        "app_bg": t["app_bg"], "sidebar_bg": t["sidebar_bg"],
+        "surf": t["surf"], "surf2": t["surf2"], "edge": t["edge"], "edge2": t["edge2"],
+        "txt": t["txt"], "mute": t["mute"], "faint": t["faint"],
+        "accent": t["accent"], "accent_hi": t["accent_hi"], "accent_lo": t["accent_lo"],
+        "primary_txt": t["primary_txt"], "pos": t["pos"], "neg": t["neg"], "warn": t["warn"],
+        "btn_bg": t["btn_bg"], "input_bg": t["input_bg"],
+        "expander_bg": t["expander_bg"], "alert_bg": t["alert_bg"],
+        "glow": _rgba(t["accent"], 0.28), "glowsoft": _rgba(t["accent"], 0.12),
+        "scroll_track": t["ink"], "scroll1": t["scroll1"], "scroll2": t["scroll2"],
+        "scroll_hover": t["accent"],
+        "brand1": t["accent"], "brand2": t["accent_hi"], "brand3": t["accent_lo"],
+    }
+    css = CSS_TEMPLATE
+    for k, v in tokens.items():
+        css = css.replace("%%" + k + "%%", v)
+    return css
 
 
 # ----------------------------------------------------------------------------
@@ -1338,7 +1460,7 @@ def cockpit_body() -> None:
               f"{int((acc['restricted']==0).sum())} accounts · {acc['currency'].nunique()} currencies", GOLD),
              (f"{default_params()['horizon_days']}-day trough", money(s["min_usd"], comp=True), s["min_date"], BLUE),
              ("Floor headroom", money(s["headroom_usd"], comp=True), f"policy floor {money(s['floor_usd'], comp=True)}", head_tone),
-             ("Gross FX exposure", money(s["fx_exposure_usd"], comp=True), f"±1% ⇒ {money(s['sens_total_1pct'], comp=True)}", "#E86BC7"),
+             ("Gross FX exposure", money(s["fx_exposure_usd"], comp=True), f"±1% ⇒ {money(s['sens_total_1pct'], comp=True)}", CCY_META["GBP"]["color"]),
              ("Funding gap (base)", money(s["gap_usd"], comp=True),
               "no draw needed" if s["gap_usd"] < 1 else f"first breach {s['first_breach']}", GREEN if s["gap_usd"] < 1 else RED)]
     for col, (l, v, sub, tone) in zip(cols, cards):
@@ -1886,8 +2008,8 @@ def page_lab() -> None:
             st.success("No external funding required — projected position stays above the policy floor.")
         c1, c2 = st.columns(2)
         c1.markdown("##### End positions by currency")
-        c1.plotly_chart(fig_ladder(exposure_base=base, exposure_scen=scen) if False else fig_ladder(base, scen),
-                        use_container_width=True, key="lab_ladder", config={"displayModeBar": False})
+        c1.plotly_chart(fig_ladder(base, scen), use_container_width=True, key="lab_ladder",
+                        config={"displayModeBar": False})
         c2.markdown("##### Exposure & ±1% sensitivity")
         c2.plotly_chart(fig_exposure(scen["exposure"]), use_container_width=True, key="lab_exp_chart",
                         config={"displayModeBar": False})
@@ -2093,7 +2215,7 @@ def page_review() -> None:
 # Page: Reports
 # ----------------------------------------------------------------------------
 def page_reports() -> None:
-    page_header("Reports & Export", "Approval-ready funding views with lineage, assumptions, warnings and sign-off. Exports are audited.")
+    page_header("Reports & Export", "Approval-ready funding views with lineage, assumptions, warnings and sign-off. Exports are audited. Reports keep a fixed paper style for print.")
     scs = qrows("SELECT * FROM scenarios ORDER BY (status='approved') DESC, created_at DESC")
     if not scs:
         st.info("No scenarios to report on yet.")
@@ -2141,29 +2263,29 @@ DEMO_SCRIPT = """**60-second demo script**
 3. **0:20 — Scenario Lab.** Pick *Severe stress*: FX shocks, 7-day collection delay, 20% haircut recompute instantly; funding actions appear (sell safe EUR/GBP surplus, residual revolver draw).
 4. **0:35 — Governance.** Save & submit → Review & Approvals: approve with a note (separation of duties enforced), audit trail visible.
 5. **0:45 — Report.** Reports page: approval-ready HTML with lineage, checksums, assumptions, sign-off. Download.
-6. **0:55 — This reel.** The GIF you are watching was rendered locally from the running simulation — no screen capture, no cloud, no API keys."""
+6. **0:55 — This reel.** The GIF you are watching was rendered locally from the running simulation, in the active theme — no screen capture, no cloud, no API keys."""
 
 
 def page_demo() -> None:
-    page_header("Demo Studio", "A live demo video file, generated in-app from the running simulation — downloadable and shareable. Rendered locally with Pillow; no external services.")
+    page_header("Demo Studio", "A live demo video file, generated in-app from the running simulation — downloadable, shareable, and rendered in the active theme. Local Pillow rendering; no external services.")
     c1, c2, c3 = st.columns([1, 1, 1])
     n = c1.slider("Frames", 24, 72, 48, key="ds_frames")
     pace = c2.selectbox("Pace", ["Smooth", "Standard", "Slow"], index=1, key="ds_pace")
     dur = {"Smooth": 110, "Standard": 160, "Slow": 240}[pace]
     if c3.button("🔄 Regenerate now", key="ds_regen", use_container_width=True):
         st.session_state["demo_gif"] = None
-    meta = (n, dur, snapshot_checksum())
+    meta = (n, dur, snapshot_checksum(), get_meta("theme", DEFAULT_THEME))
     if st.session_state.get("demo_gif") is None or st.session_state.get("demo_meta") != meta:
         with st.spinner("Rendering live demo reel from the current simulation state…"):
             st.session_state["demo_gif"] = render_demo_gif(n, dur)
             st.session_state["demo_meta"] = meta
     gif = st.session_state["demo_gif"]
-    st.image(gif, caption=f"AUREUS live demo reel · {n} frames · {len(gif)/1e6:.1f} MB · generated {utcnow_iso()}",
+    st.image(gif, caption=f"AUREUS live demo reel · {n} frames · {len(gif)/1e6:.1f} MB · theme: {get_meta('theme', DEFAULT_THEME)} · generated {utcnow_iso()}",
              use_container_width=True)
     d1, d2 = st.columns([1, 2])
     d1.download_button("⬇ Download demo video (GIF)", gif, "aureus_demo_reel.gif", "image/gif",
                        key="ds_dl", type="primary", use_container_width=True)
-    d2.caption("Animated GIF plays in browsers, LinkedIn and most chat tools. It shows the live cash KPI, the baseline forecast drawing in, the severe-stress overlay, the FX board and the event feed — all computed from this database.")
+    d2.caption("Animated GIF plays in browsers, LinkedIn and most chat tools. It shows the live cash KPI, the baseline forecast drawing in, the severe-stress overlay, the FX board and the event feed — all computed from this database. Switch the sidebar theme and the reel re-renders to match.")
     with st.expander("🎤 Demo script & talking points"):
         st.markdown(DEMO_SCRIPT)
     with st.expander("📎 Attach your own screen recording (optional)"):
@@ -2186,7 +2308,7 @@ DOC_BACKLOG = [
     ("MVP", "Scenario lab (FX, delays, haircuts, buffers) + funding plan", "Done"),
     ("MVP", "Roles, review/approval lifecycle, SoD, audit, overrides", "Done"),
     ("MVP", "Approval-ready HTML/MD/CSV exports + lineage", "Done"),
-    ("MVP", "Live simulation + in-app demo reel + self-tests", "Done"),
+    ("MVP", "Live simulation + in-app demo reel + self-tests + themes", "Done"),
     ("Post-MVP", "Bank-statement reconciliation matching", "Planned"),
     ("Post-MVP", "Inflow-timing ML vs deterministic baseline (time-split MAE/RMSE)", "Planned"),
     ("Post-MVP", "Scheduled imports, alerts, PostgreSQL team edition", "Planned"),
@@ -2255,7 +2377,7 @@ def page_setup() -> None:
 pip install -r requirements.txt      # install the six open-source dependencies
 streamlit run app.py                 # launch — demo data seeds & simulation starts automatically""",
                 language="powershell")
-        st.caption("If activation is blocked: `Set-ExecutionPolicy -Scope Process RemoteSigned` then retry. No API keys, works offline after install.")
+        st.caption("If activation is blocked: `Set-ExecutionPolicy -Scope Process RemoteSigned` then retry. No API keys, works offline after install. Themes: sidebar → Theme (persisted; charts and demo reel follow).")
         req_path = Path("requirements.txt")
         req_txt = req_path.read_text(encoding="utf-8") if req_path.exists() else REQUIREMENTS_TXT
         c1, c2 = st.columns(2)
@@ -2377,6 +2499,11 @@ def sidebar() -> str:
     with st.sidebar:
         st.markdown(f'<div class="brand">{APP_NAME}</div><div class="brand-sub">{TAGLINE}</div>', unsafe_allow_html=True)
         st.divider()
+        names = list(THEMES)
+        cur = get_meta("theme", DEFAULT_THEME)
+        st.selectbox("🎨 Theme", names, index=names.index(cur) if cur in names else 0,
+                     key="theme_sel", on_change=_set_theme)
+        st.caption("Theme persists and restyles charts, cards and the demo reel.")
         st.selectbox("Role", ROLES, index=0, key="role")
         st.text_input("Your name (audit identity)", "alex.morgan", key="user_name")
         st.caption("Permissions: " + ", ".join(sorted(PERMS[role()])))
@@ -2406,8 +2533,9 @@ def sidebar() -> str:
 
 def main() -> None:
     st.set_page_config(page_title=f"{APP_NAME} — Treasury & FX Command", page_icon="🏛️", layout="wide")
-    st.markdown(CSS, unsafe_allow_html=True)
     ensure_db()
+    apply_theme(get_meta("theme", DEFAULT_THEME))
+    st.markdown(build_css(), unsafe_allow_html=True)
     for k, v in {"up_counter": 0, "undo": None, "demo_gif": None}.items():
         st.session_state.setdefault(k, v)
     page = sidebar()
